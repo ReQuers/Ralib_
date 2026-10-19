@@ -60,47 +60,107 @@ fn button(rect: rl.Rectangle, label: [:0]const u8) bool {
 
     return hover and rl.isMouseButtonReleased(.left);
 }
+///////////
+///
+///
+///
+///
+///
+///////////
+
+const Operation = enum { add, substract, multiply, divide };
+
+fn calculate(expr: []const u8) !f64 {
+    const trimmed = std.mem.trim(u8, expr, "\t\r\n");
+    if (trimmed.len == 0) return error.InvalidInput;
+    var op_index: ?usize = null;
+    var found_op: Operation = .add;
+
+    for (trimmed[1..], 1..) |char, i| {
+        switch (char) {
+            '+' => {
+                op_index = i;
+                found_op = .add;
+                break;
+            },
+            '-' => {
+                op_index = i;
+                found_op = .substract;
+                break;
+            },
+            '*' => {
+                op_index = i;
+                found_op = .multiply;
+                break;
+            },
+            '/' => {
+                op_index = i;
+                found_op = .divide;
+                break;
+            },
+            else => {},
+        }
+    }
+    const idx = op_index orelse return error.InvalidInput;
+    const left_str = std.mem.trim(u8, trimmed[0..idx], "");
+    const right_str = std.mem.trim(u8, trimmed[idx + 1 ..], "");
+
+    const num1 = try std.fmt.parseFloat(f64, left_str);
+    const num2 = try std.fmt.parseFloat(f64, right_str);
+    return switch (found_op) {
+        .add => num1 + num2,
+        .substract => num1 - num2,
+        .multiply => num1 * num2,
+        .divide => {
+            if (num2 == 0) return error.DivisionByZero;
+            return num1 / num2;
+        },
+    };
+}
 
 pub fn main() !void {
-    rl.initWindow(640, 360, "Zig 0.17 + raylib GUI");
+    rl.initWindow(900, 900, "Zig 0.17 + raylib GUI");
     defer rl.closeWindow();
     rl.setTargetFPS(60);
 
-    var name: TextField = .{};
+    var expr_field: TextField = .{};
     var focused = false;
-    var clicks: u32 = 0;
 
-    const field_rect: rl.Rectangle = .{ .x = 20, .y = 90, .width = 300, .height = 36 };
-    const btn_rect: rl.Rectangle = .{ .x = 20, .y = 150, .width = 140, .height = 36 };
+    var result_buf: [128]u8 = @splat(0);
+    var output_msg: [:0]const u8 = "Enter Input";
 
+    const field_rect: rl.Rectangle = .{ .x = 20, .y = 90, .width = 400, .height = 36 };
+    const btn_rect: rl.Rectangle = .{ .x = 430, .y = 90, .width = 150, .height = 36 };
     //Update
     while (!rl.windowShouldClose()) {
         if (rl.isMouseButtonPressed(.left)) {
             focused = rl.checkCollisionPointRec(rl.getMousePosition(), field_rect);
         }
-        if (focused) name.handleInput();
+        if (focused) expr_field.handleInput();
 
+        if (button(btn_rect, "Calculate")) {
+            const res = calculate(expr_field.text());
+            if (res) |value| {
+                const printed = std.fmt.bufPrint(&result_buf, "Result{d:.4}", .{value}) catch "too long";
+                result_buf[printed.len] = 0;
+                output_msg = result_buf[0..printed.len :0];
+            } else |_| {
+                output_msg = "invalid input";
+            }
+        }
         rl.beginDrawing();
         defer rl.endDrawing();
 
         rl.clearBackground(.ray_white);
-        rl.drawText("Your name:", 20, 60, font_size, .dark_gray);
+        rl.drawText("Enter line", 20, 60, 16, .dark_gray);
 
         rl.drawRectangleRec(field_rect, .white);
         rl.drawRectangleLinesEx(field_rect, 2, if (focused) .blue else .gray);
-        const shown = name.text();
+        const shown = expr_field.text();
         rl.drawText(shown, 28, 98, font_size, .black);
         if (focused and @mod(rl.getTime(), 1.0) < 0.5) {
             rl.drawText("_", 28 + rl.measureText(shown, font_size), 98, font_size, .black);
         }
-
-        if (button(btn_rect, "Click me")) clicks += 1;
-
-        var out: [128]u8 = undefined;
-        const printed = std.fmt.bufPrint(&out, "Hello, {s}! Clicks: {d}", .{ shown, clicks }) catch "too long";
-        out[printed.len] = 0;
-        const msg: [:0]const u8 = out[0..printed.len :0];
-
-        rl.drawText(msg, 20, 220, font_size, .dark_blue);
+        rl.drawText(output_msg, 20, 160, font_size, .dark_blue);
     }
 }
